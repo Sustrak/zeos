@@ -67,7 +67,8 @@ int sys_fork(){
   }
 
   copy_data(parent_union, child_union, sizeof(union task_union));
-  allocate_DIR(&child_union->task);
+  child_union->task.dir_number = allocate_DIR(&child_union->task);
+
   page_table_entry *child_page_table = get_PT(&child_union->task);
 
   for(pag = 0; pag < NUM_PAG_KERNEL+NUM_PAG_CODE; pag++){
@@ -105,11 +106,14 @@ void sys_exit()
   update_user_ticks(&current()->p_stats);
 
   struct task_struct *current_task = current();
-  page_table_entry *current_pt = get_PT(current_task);
-  unsigned int pag;
-  for(pag = 0; pag < NUM_PAG_DATA; ++pag){
-    free_frame(get_frame(current_pt, PAG_LOG_INIT_DATA+pag));
-    del_ss_pag(current_pt, PAG_LOG_INIT_DATA+pag);
+  --current_task->dir_number;
+  if(current_task->dir_number == 0) {
+    page_table_entry *current_pt = get_PT(current_task);
+    unsigned int pag;
+    for (pag = 0; pag < NUM_PAG_DATA; ++pag) {
+      free_frame(get_frame(current_pt, PAG_LOG_INIT_DATA + pag));
+      del_ss_pag(current_pt, PAG_LOG_INIT_DATA + pag);
+    }
   }
   list_add_tail(&current_task->list, &freequeue);
   current_task->PID = -1;
@@ -189,4 +193,30 @@ int sys_getstats(int pid, struct stats *st){
   }
   update_sys_ticks(&current()->p_stats);
   return -ESRCH;
+}
+
+int sys_clone(void (*function)(void), void *stack){
+  //stack ??
+  //function ??
+  update_user_ticks(&current()->p_stats);
+
+  if(!access_ok(0, function, sizeof(void))) return -EACCES;
+  if(!access_ok(0, stack, sizeof(void))) return -EACCES;
+  if(list_empty(&freequeue)){
+    update_sys_ticks(&current()->p_stats);
+    return -ENOMEM;
+  }
+  struct list_head *element = list_first(&freequeue);
+  union task_union *child_union = list_entry(element, union task_union, task.list);
+  union task_union *father_union = (union task_union*) current();
+
+  copy_data(father_union, child_union, sizeof(union task_union));
+
+  int dir = father_union->task.dir_number;
+  ++allocated_dirs[dir];
+  child_union->stack[KERNEL_STACK_SIZE - 18] = (unsigned long)&ret_from_fork;
+  child_union->stack[KERNEL_STACK_SIZE - 19] = 0;
+  init_stats(&child_union->task.p_stats);
+  child_union->task.PID = nextPID++;
+
 }

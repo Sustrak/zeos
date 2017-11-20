@@ -27,6 +27,7 @@ struct task_struct {
   unsigned int quantum;
   enum state_t state;
   struct stats p_stats;
+  int dir_number;
 };
 
 union task_union {
@@ -40,6 +41,7 @@ extern struct task_struct *idle_task;
 extern struct list_head freequeue;
 extern struct list_head readyqueue;
 extern union task_union *idle_union;
+extern int allocated_dirs[NR_TASKS];
 
 
 

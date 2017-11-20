@@ -108,3 +108,19 @@ int get_stats(int pid, struct stats *st) {
   }
   return ret;
 }
+
+int clone(void (*function)(void), void *stack) {
+  int ret;
+  __asm__ __volatile__ (
+  "int $0x80;"
+  : "=a" (ret)
+  : "a" (__NR_clone), "b" (function), "c" (stack)
+  );
+  if(ret < 0){
+    errno = -ret;
+    return -1;
+  }
+  return ret;
+}
+
+

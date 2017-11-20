@@ -4,6 +4,7 @@
 
 #include <sched.h>
 #include <mm.h>
+#include <io.h>
 
 /**
  * Container for the Task array and 2 additional pages (the first and the last one)
@@ -27,6 +28,7 @@ struct list_head readyqueue;
 struct task_struct *idle_task;
 //struct task_struct *init_task;
 unsigned int current_quantum;
+int allocated_dirs[NR_TASKS];
 
 //int count = 0;
 
@@ -57,13 +59,20 @@ page_table_entry * get_PT (struct task_struct *t)
 
 int allocate_DIR(struct task_struct *t)
 {
-	int pos;
+	/* int pos;
 
 	pos = ((int)t-(int)task)/sizeof(union task_union);
 
 	t->dir_pages_baseAddr = (page_table_entry*) &dir_pages[pos];
-
-	return 1;
+	*/
+  for (int i = 0; i < NR_TASKS; ++i) {
+    if(allocated_dirs[i] == 0){
+      t->dir_pages_baseAddr = (page_table_entry*) &dir_pages[i];
+      allocated_dirs[i]++;
+      return i;
+    }
+  }
+	return -1;
 }
 
 void cpu_idle(void)
@@ -127,6 +136,7 @@ void init_sched(){
 	int i = 0;
   for (i = 0; i < NR_TASKS; ++i) {
     list_add(&(task[i].task.list), &freequeue);
+    allocated_dirs[i] = 0;
   }
 }
 
