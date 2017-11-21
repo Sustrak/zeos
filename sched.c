@@ -29,6 +29,7 @@ struct task_struct *idle_task;
 //struct task_struct *init_task;
 unsigned int current_quantum;
 int allocated_dirs[NR_TASKS];
+struct semaphore semaphores[NR_SEMAPHORES];
 
 //int count = 0;
 

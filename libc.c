@@ -123,4 +123,62 @@ int clone(void (*function)(void), void *stack) {
   return ret;
 }
 
+int sem_init(int n_sem, unsigned int value) {
+  int ret;
+  __asm__ __volatile__ (
+  "int $0x80;"
+  : "=a" (ret)
+  : "a" (__NR_sem_init), "b" (n_sem), "c" (value)
+  );
+  if(ret < 0){
+    errno = -ret;
+    return -1;
+  }
+  return ret;
+
+}
+
+int sem_wait(int n_sem) {
+  int ret;
+  __asm__ __volatile__ (
+  "int $0x80;"
+  : "=a" (ret)
+  : "a" (__NR_sem_wait), "b" (n_sem)
+  );
+  if(ret < 0){
+    errno = -ret;
+    return -1;
+  }
+  return ret;
+
+}
+
+int sem_signal(int n_sem) {
+  int ret;
+  __asm__ __volatile__ (
+  "int $0x80;"
+  : "=a" (ret)
+  : "a" (__NR_sem_signal), "b" (n_sem)
+  );
+  if(ret < 0){
+    errno = -ret;
+    return -1;
+  }
+  return ret;
+}
+
+int sem_destroy(int n_sem) {
+  int ret;
+  __asm__ __volatile__ (
+  "int $0x80;"
+  : "=a" (ret)
+  : "a" (__NR_sem_destroy), "b" (n_sem)
+  );
+  if(ret < 0){
+    errno = -ret;
+    return -1;
+  }
+  return ret;
+}
+
 

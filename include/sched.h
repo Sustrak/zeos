@@ -13,6 +13,7 @@
 #define NR_TASKS      10
 #define KERNEL_STACK_SIZE	1024
 #define DEFAULT_QUANTUM 10
+#define NR_SEMAPHORES 20
 
 extern unsigned int current_quantum;
 
@@ -35,6 +36,13 @@ union task_union {
   unsigned long stack[KERNEL_STACK_SIZE];    /* pila de sistema, per procés */
 };
 
+struct semaphore {
+  unsigned int in_use;
+  int counter;
+  struct list_head blocked;
+  int owner;
+};
+
 extern union task_union protected_tasks[NR_TASKS+2];
 extern union task_union *task; /* Vector de tasques */
 extern struct task_struct *idle_task;
@@ -42,6 +50,7 @@ extern struct list_head freequeue;
 extern struct list_head readyqueue;
 extern union task_union *idle_union;
 extern int allocated_dirs[NR_TASKS];
+extern struct semaphore semaphores[NR_SEMAPHORES];
 
 
 

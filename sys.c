@@ -196,8 +196,6 @@ int sys_getstats(int pid, struct stats *st){
 }
 
 int sys_clone(void (*function)(void), void *stack){
-  //stack ??
-  //function ??
   update_user_ticks(&current()->p_stats);
 
   if(!access_ok(0, function, sizeof(void))) return -EACCES;
@@ -220,5 +218,70 @@ int sys_clone(void (*function)(void), void *stack){
   child_union->stack[KERNEL_STACK_SIZE - 2] = (unsigned long) stack;     //esp
   init_stats(&child_union->task.p_stats);
   child_union->task.PID = nextPID++;
+  update_sys_ticks(&current()->p_stats);
+  return child_union->task.PID;
+}
+
+int sys_sem_init(int n_sem, unsigned int value){
+  update_user_ticks(&current()->p_stats);
+
+  if(0 > n_sem > 20) return -EBADF;
+  struct semaphore *sem = &semaphores[n_sem];
+  if(sem->in_use) return -EBUSY;
+  sem->owner = current()->PID;
+  sem->counter = value;
+  INIT_LIST_HEAD(&sem->blocked);
+
+  update_sys_ticks(&current()->p_stats);
+  return 0;
+}
+
+int sys_sem_wait(int n_sem){
+  update_user_ticks(&current()->p_stats);
+  //Destroyed while the process is blocked ???
+  if(0 > n_sem > 20) return -EBADF;
+  struct semaphore *sem = &semaphores[n_sem];
+  if(sem->counter <= 0){
+    list_add_tail(&current()->list, &sem->blocked);
+    update_user_ticks(&current()->p_stats);
+    sched_next_rr();
+  }
+  else sem->counter--;
+
+  update_sys_ticks(&current()->p_stats);
+  return 0;
+}
+
+int sys_sem_signal(int n_sem){
+  update_user_ticks(&current()->p_stats);
+  if(0 > n_sem > 20) return -EBADF;
+  struct semaphore *sem = &semaphores[n_sem];
+  if(list_empty(&sem->blocked)) sem->counter++;
+  else {
+    struct list_head *element = list_first(&sem->blocked);
+    list_del(&sem->blocked);
+    list_add_tail(element, &readyqueue);
+  }
+
+  update_sys_ticks(&current()->p_stats);
+  return 0;
+}
+
+int sys_sem_destroy(int n_sem){
+  update_user_ticks(&current()->p_stats);
+  if(0 > n_sem > 20) return -EBADF;
+  struct semaphore *sem = &semaphores[n_sem];
+  if(!sem->in_use) return -EPERM;
+  if(sem->owner != current()->PID) return -EPERM;
+
+  struct list_head *it = NULL;
+  list_for_each(it, &sem->blocked){
+    list_del(&sem->blocked);
+    list_add_tail(it, &readyqueue);
+  }
+  sem->in_use = 0;
+  update_sys_ticks(&current()->p_stats);
+  if(!it) return -1;
+  return 0;
 
 }
