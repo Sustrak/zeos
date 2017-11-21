@@ -214,8 +214,10 @@ int sys_clone(void (*function)(void), void *stack){
 
   int dir = father_union->task.dir_number;
   ++allocated_dirs[dir];
-  child_union->stack[KERNEL_STACK_SIZE - 18] = (unsigned long)&ret_from_fork;
   child_union->stack[KERNEL_STACK_SIZE - 19] = 0;
+  child_union->stack[KERNEL_STACK_SIZE - 18] = (unsigned long)&ret_from_fork;
+  child_union->stack[KERNEL_STACK_SIZE - 5] = (unsigned long) function;  //eip
+  child_union->stack[KERNEL_STACK_SIZE - 2] = (unsigned long) stack;     //esp
   init_stats(&child_union->task.p_stats);
   child_union->task.PID = nextPID++;
 
