@@ -1,6 +1,12 @@
 # 1 "bootsect.S"
 # 1 "<built-in>" 1
 # 1 "bootsect.S" 2
+ # 1 "bootsect.S"
+
+ # 1 "<built-in>" 1
+
+ # 1 "bootsect.S" 2
+
 !
 !	bootsect.s    
 !
@@ -380,4 +386,5 @@ gdt_addr:
 	.word	0	!dummy
 boot_flag:
 	.word 0xAA55
+
 

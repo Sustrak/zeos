@@ -15,7 +15,7 @@
 #define DEFAULT_QUANTUM 10
 #define NR_SEMAPHORES 20
 
-extern unsigned int current_quantum;
+extern int current_quantum;
 
 enum state_t { ST_RUN, ST_READY, ST_BLOCKED};
 

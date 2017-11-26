@@ -26,23 +26,9 @@ extern struct list_head blocked;
 struct list_head freequeue;
 struct list_head readyqueue;
 struct task_struct *idle_task;
-//struct task_struct *init_task;
-unsigned int current_quantum;
+int current_quantum;
 int allocated_dirs[NR_TASKS];
 struct semaphore semaphores[NR_SEMAPHORES];
-
-//int count = 0;
-
-/*void tsk_sw(){
-	if(!count){
-		task_switch(idle_task);
-		count = 1;
-	}
-	else {
-		task_switch(init_task);
-		count = 0;
-	}
-}*/
 
 
 /* get_DIR - Returns the Page Directory address for task 't' */
@@ -120,6 +106,7 @@ void init_task1(void)
 
 	//Setting quantum and stats
 	task1_union->task.quantum = DEFAULT_QUANTUM;
+  current_quantum = DEFAULT_QUANTUM;
 	init_stats(&task1_union->task.p_stats);
 
 	allocate_DIR(&task1_union->task);
@@ -160,6 +147,7 @@ void task_switch(union task_union *new) {
 	);
   inner_task_switch(new);
   __asm__ __volatile__(
+  "pop %ebx;"
   "pop %ebx;"
   "pop %edi;"
   "pop %esi"
@@ -213,8 +201,9 @@ void update_sched_data_rr() {
 }
 
 int needs_sched_rr() {
-  if (!current_quantum && !list_empty(&freequeue)) return 1;
+  if (current_quantum <= 0 && !list_empty(&readyqueue)) return 1;
   else {
+    current()->p_stats.total_trans++;
     current_quantum = get_quantum(current());
     return 0;
   }
@@ -255,7 +244,7 @@ void sched_next_rr() {
 void schedule() {
   update_sched_data_rr();
   if(needs_sched_rr()) {
-    update_process_state_rr(current(), &freequeue);
+    update_process_state_rr(current(), &readyqueue);
     sched_next_rr();
   }
 }

@@ -7,7 +7,6 @@
 #include <mm.h>
 #include <system.h>
 #include <errno.h>
-#include <entry.h>
 
 #define LECTURA 0
 #define ESCRIPTURA 1
@@ -32,6 +31,10 @@ int sys_getpid()
 	update_user_ticks(&current()->p_stats);
     update_sys_ticks(&current()->p_stats);
 	return current()->PID;
+}
+
+int ret_from_fork(){
+  return 0;
 }
 
 int sys_fork(){
@@ -216,8 +219,11 @@ int sys_clone(void (*function)(void), void *stack){
   child_union->stack[KERNEL_STACK_SIZE - 18] = (unsigned long)&ret_from_fork;
   child_union->stack[KERNEL_STACK_SIZE - 5] = (unsigned long) function;  //eip
   child_union->stack[KERNEL_STACK_SIZE - 2] = (unsigned long) stack;     //esp
+  child_union->task.kernel_esp = (int *) &child_union->stack[KERNEL_STACK_SIZE - 19];
   init_stats(&child_union->task.p_stats);
   child_union->task.PID = nextPID++;
+  list_add_tail(&child_union->task.list, &readyqueue);
+
   update_sys_ticks(&current()->p_stats);
   return child_union->task.PID;
 }
@@ -225,7 +231,7 @@ int sys_clone(void (*function)(void), void *stack){
 int sys_sem_init(int n_sem, unsigned int value){
   update_user_ticks(&current()->p_stats);
 
-  if(0 > n_sem > 20) return -EBADF;
+  if(n_sem < 0 || n_sem > 20) return -EBADF;
   struct semaphore *sem = &semaphores[n_sem];
   if(sem->in_use) return -EBUSY;
   sem->owner = current()->PID;
@@ -238,8 +244,7 @@ int sys_sem_init(int n_sem, unsigned int value){
 
 int sys_sem_wait(int n_sem){
   update_user_ticks(&current()->p_stats);
-  //Destroyed while the process is blocked ???
-  if(0 > n_sem > 20) return -EBADF;
+  if(n_sem < 0 || n_sem > 20) return -EBADF;
   struct semaphore *sem = &semaphores[n_sem];
   if(sem->counter <= 0){
     list_add_tail(&current()->list, &sem->blocked);
@@ -247,14 +252,14 @@ int sys_sem_wait(int n_sem){
     sched_next_rr();
   }
   else sem->counter--;
-
+  if(!sem->in_use) return -ENOEXEC;
   update_sys_ticks(&current()->p_stats);
   return 0;
 }
 
 int sys_sem_signal(int n_sem){
   update_user_ticks(&current()->p_stats);
-  if(0 > n_sem > 20) return -EBADF;
+  if(n_sem < 0 || n_sem > 20) return -EBADF;
   struct semaphore *sem = &semaphores[n_sem];
   if(list_empty(&sem->blocked)) sem->counter++;
   else {
@@ -269,19 +274,20 @@ int sys_sem_signal(int n_sem){
 
 int sys_sem_destroy(int n_sem){
   update_user_ticks(&current()->p_stats);
-  if(0 > n_sem > 20) return -EBADF;
+  if(n_sem < 0 || n_sem > 20) return -EBADF;
   struct semaphore *sem = &semaphores[n_sem];
   if(!sem->in_use) return -EPERM;
   if(sem->owner != current()->PID) return -EPERM;
 
-  struct list_head *it = NULL;
+  sem->in_use = 0;
+  struct list_head *it;
   list_for_each(it, &sem->blocked){
     list_del(&sem->blocked);
     list_add_tail(it, &readyqueue);
   }
-  sem->in_use = 0;
+
+
   update_sys_ticks(&current()->p_stats);
-  if(!it) return -1;
   return 0;
 
 }

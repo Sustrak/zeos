@@ -49,7 +49,7 @@
       pushl %ebx; \
       movl $__KERNEL_DS, %edx;    \
       movl %edx, %ds;           \
-      movl %edx, %es
+      movl %edx, %es;
 
 #define RESTORE_ALL \
       popl %ebx; \
@@ -92,9 +92,5 @@ err:
       movl $-38, %eax
 fin:
       movl %eax, 0x18(%esp)
-      RESTORE_ALL
-      iret
-
-ENTRY(ret_from_fork)
       RESTORE_ALL
       iret
