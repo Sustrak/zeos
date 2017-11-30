@@ -34,6 +34,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 
+
 /* Don't touch these, unless you really know what you're doing. */
 #define DEF_INITSEG	0x9000
 #define DEF_SYSSEG	0x1000

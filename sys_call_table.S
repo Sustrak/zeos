@@ -40,4 +40,4 @@ ENTRY (sys_call_table)
     .long sys_getstats    //35
 
 .global MAX_SYSCALL
-MAX_SYSCALL = (. - sys_call_table)/35
+MAX_SYSCALL = (. - sys_call_table)/4

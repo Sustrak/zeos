@@ -4,7 +4,6 @@
 
 #include <sched.h>
 #include <mm.h>
-#include <io.h>
 
 /**
  * Container for the Task array and 2 additional pages (the first and the last one)
@@ -55,8 +54,9 @@ int allocate_DIR(struct task_struct *t)
   for (int i = 0; i < NR_TASKS; ++i) {
     if(allocated_dirs[i] == 0){
       t->dir_pages_baseAddr = (page_table_entry*) &dir_pages[i];
+      t->dir_number = i;
       allocated_dirs[i]++;
-      return i;
+      return 0;
     }
   }
 	return -1;
@@ -67,7 +67,6 @@ void cpu_idle(void)
 	__asm__ __volatile__("sti": : :"memory");
 	while(1)
 	{
-	printk("IDLE");
 	}
 }
 
@@ -87,6 +86,8 @@ void init_idle (void)
 
   //Initialize the new directory
   allocate_DIR(&idle_union->task);
+
+
 
   idle_union->stack[KERNEL_STACK_SIZE-1] = (unsigned long) &cpu_idle;
   idle_union->stack[KERNEL_STACK_SIZE-2] = 0;
@@ -114,7 +115,6 @@ void init_task1(void)
 	set_user_pages(&task1_union->task);
 	tss.esp0 = (DWord) &task1_union->stack[KERNEL_STACK_SIZE];
 	set_cr3(task1_union->task.dir_pages_baseAddr);
-	//init_task = &task1_union->task;
 }
 
 
@@ -125,6 +125,9 @@ void init_sched(){
   for (i = 0; i < NR_TASKS; ++i) {
     list_add(&(task[i].task.list), &freequeue);
     allocated_dirs[i] = 0;
+  }
+  for (i = 0; i < NR_SEMAPHORES; ++i){
+    semaphores[i].in_use = 0;
   }
 }
 
@@ -201,12 +204,12 @@ void update_sched_data_rr() {
 }
 
 int needs_sched_rr() {
-  if (current_quantum <= 0 && !list_empty(&readyqueue)) return 1;
-  else {
+  if (current_quantum <= 0 ){
+    if(!list_empty(&readyqueue)) return 1;
     current()->p_stats.total_trans++;
     current_quantum = get_quantum(current());
-    return 0;
   }
+  return 0;
 }
 
 void update_process_state_rr(struct task_struct *t, struct list_head *dest) {

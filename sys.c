@@ -12,6 +12,8 @@
 #define ESCRIPTURA 1
 #define SIZE_BUFFER 32
 
+int sys_sem_destroy(int n_sem);
+
 int check_fd(int fd, int permissions)
 {
   if (fd!=1) return -9; /*EBADF*/
@@ -109,8 +111,15 @@ void sys_exit()
   update_user_ticks(&current()->p_stats);
 
   struct task_struct *current_task = current();
-  --current_task->dir_number;
-  if(current_task->dir_number == 0) {
+
+  int i;
+  for(i = 0; i < NR_SEMAPHORES; i++){
+    if(semaphores[i].owner == current_task->PID)
+      sys_sem_destroy(i);
+  }
+
+  --allocated_dirs[current_task->dir_number];
+  if(allocated_dirs[current_task->dir_number] == 0) {
     page_table_entry *current_pt = get_PT(current_task);
     unsigned int pag;
     for (pag = 0; pag < NUM_PAG_DATA; ++pag) {
@@ -118,6 +127,7 @@ void sys_exit()
       del_ss_pag(current_pt, PAG_LOG_INIT_DATA + pag);
     }
   }
+
   list_add_tail(&current_task->list, &freequeue);
   current_task->PID = -1;
   sched_next_rr();
@@ -154,11 +164,11 @@ int sys_write(int fd, char *buffer, int size)
 		update_sys_ticks(&current()->p_stats);
 		return error;
 	}
-    ret += sys_write_console(buff, size);
+    ret += sys_write_console(buff, SIZE_BUFFER);
     buffer += SIZE_BUFFER;
     size -= SIZE_BUFFER;
   }
-  error = copy_from_user(buffer, buff, SIZE_BUFFER);
+  error = copy_from_user(buffer, buff, size);
   if (error == -1) {
 	  update_sys_ticks(&current()->p_stats);
 	  return error;
@@ -208,6 +218,7 @@ int sys_clone(void (*function)(void), void *stack){
     return -ENOMEM;
   }
   struct list_head *element = list_first(&freequeue);
+  list_del(element);
   union task_union *child_union = list_entry(element, union task_union, task.list);
   union task_union *father_union = (union task_union*) current();
 
@@ -231,11 +242,12 @@ int sys_clone(void (*function)(void), void *stack){
 int sys_sem_init(int n_sem, unsigned int value){
   update_user_ticks(&current()->p_stats);
 
-  if(n_sem < 0 || n_sem > 20) return -EBADF;
+  if(n_sem < 0 || n_sem > 20) return -EINVAL;
   struct semaphore *sem = &semaphores[n_sem];
   if(sem->in_use) return -EBUSY;
   sem->owner = current()->PID;
   sem->counter = value;
+  sem->in_use = 1;
   INIT_LIST_HEAD(&sem->blocked);
 
   update_sys_ticks(&current()->p_stats);
@@ -244,7 +256,7 @@ int sys_sem_init(int n_sem, unsigned int value){
 
 int sys_sem_wait(int n_sem){
   update_user_ticks(&current()->p_stats);
-  if(n_sem < 0 || n_sem > 20) return -EBADF;
+  if(n_sem < 0 || n_sem > 20) return -EINVAL;
   struct semaphore *sem = &semaphores[n_sem];
   if(sem->counter <= 0){
     list_add_tail(&current()->list, &sem->blocked);
@@ -252,19 +264,20 @@ int sys_sem_wait(int n_sem){
     sched_next_rr();
   }
   else sem->counter--;
-  if(!sem->in_use) return -ENOEXEC;
+  if(!sem->in_use) return -EINVAL;
   update_sys_ticks(&current()->p_stats);
   return 0;
 }
 
 int sys_sem_signal(int n_sem){
   update_user_ticks(&current()->p_stats);
-  if(n_sem < 0 || n_sem > 20) return -EBADF;
+  if(n_sem < 0 || n_sem > 20) return -EINVAL;
   struct semaphore *sem = &semaphores[n_sem];
+  if(!sem->in_use) return -EINVAL;
   if(list_empty(&sem->blocked)) sem->counter++;
   else {
     struct list_head *element = list_first(&sem->blocked);
-    list_del(&sem->blocked);
+    list_del(element);
     list_add_tail(element, &readyqueue);
   }
 
@@ -274,17 +287,19 @@ int sys_sem_signal(int n_sem){
 
 int sys_sem_destroy(int n_sem){
   update_user_ticks(&current()->p_stats);
-  if(n_sem < 0 || n_sem > 20) return -EBADF;
+  if(n_sem < 0 || n_sem > 20) return -EINVAL;
   struct semaphore *sem = &semaphores[n_sem];
-  if(!sem->in_use) return -EPERM;
+  if(!sem->in_use) return -EINVAL;
   if(sem->owner != current()->PID) return -EPERM;
 
   sem->in_use = 0;
-  struct list_head *it;
-  list_for_each(it, &sem->blocked){
-    list_del(&sem->blocked);
+  struct list_head *it, *it2;
+
+  list_for_each_safe(it, it2, &sem->blocked){
+    list_del(it);
     list_add_tail(it, &readyqueue);
   }
+
 
 
   update_sys_ticks(&current()->p_stats);
