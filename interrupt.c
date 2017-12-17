@@ -9,6 +9,8 @@
 
 #include <zeos_interrupt.h>
 #include <system.h>
+#include "queue.h"
+#include "sys.c"
 
 Gate idt[IDT_ENTRIES];
 Register    idtR;
@@ -33,6 +35,7 @@ char char_map[] =
   '\0','\0','\0','\0','\0','\0','\0','\0',
   '\0','\0'
 };
+
 
 void setInterruptHandler(int vector, void (*handler)(), int maxAccessibleFromPL)
 {
@@ -100,6 +103,15 @@ void keyboard_interrupt()
   unsigned char c = inb(0x60);
   if(!(c & 0x80)) {
     char out = char_map[c];
+
+    int ret = add_to_queue(out, &char_buffer);
+    if ((!ret || Q_COUNT(char_buffer) >= chars_to_read) && !list_empty(&blocked)) {
+      struct list_head *element = list_first(&blocked);
+      list_del(element);
+      update_process_state_rr((struct task_struct *) element, &readyqueue);
+      sched_next_rr();
+    }
+
     if(out == '\0'){
       printc_xy(0x00, 0x0, 'C');
     }

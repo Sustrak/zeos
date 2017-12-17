@@ -181,4 +181,32 @@ int sem_destroy(int n_sem) {
   return ret;
 }
 
+int read(int fd, char *buf, int count) {
+  int ret;
+  __asm__ __volatile__ (
+  "int $0x80"
+  : "=a" (ret)
+  : "a" (__NR_read), "b" (fd), "c" (buf), "d" (count)
+  );
+  if(ret < 0) {
+    errno = -ret;
+    return -1;
+  }
+  return ret;
+}
+
+void *sbrk(int increment) {
+  int ret;
+  __asm__ __volatile__ (
+  "int $0x80"
+  : "=a" (ret)
+  : "a" (__NR_sbrk), "b" (increment)
+  );
+  if(ret < 0) {
+    errno = ENOMEM;
+    return (void *) -1;
+  }
+  return (void *) ret;
+}
+
 

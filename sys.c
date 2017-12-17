@@ -7,12 +7,16 @@
 #include <mm.h>
 #include <system.h>
 #include <errno.h>
+#include "queue.h"
 
 #define LECTURA 0
 #define ESCRIPTURA 1
 #define SIZE_BUFFER 32
 
+int chars_to_read;
+
 int sys_sem_destroy(int n_sem);
+int sys_read_keyboard(char *buf, int count);
 
 int check_fd(int fd, int permissions)
 {
@@ -72,21 +76,25 @@ int sys_fork(){
   }
 
   copy_data(parent_union, child_union, sizeof(union task_union));
-  child_union->task.dir_number = allocate_DIR(&child_union->task);
+  allocate_DIR(&child_union->task);
 
   page_table_entry *child_page_table = get_PT(&child_union->task);
 
   for(pag = 0; pag < NUM_PAG_KERNEL+NUM_PAG_CODE; pag++){
     set_ss_pag(child_page_table, pag, get_frame(parent_page_table, pag));
   }
-
-  int free_pag = NUM_PAG_KERNEL+NUM_PAG_CODE+NUM_PAG_DATA+1;
+  int NUM_PAG_HEAP = parent_union->task.pages_heap;
+  int free_pag = NUM_PAG_KERNEL+NUM_PAG_CODE+NUM_PAG_DATA+NUM_PAG_HEAP+1;
   for(pag = 0; pag < NUM_PAG_DATA; pag++){
     set_ss_pag(child_page_table, NUM_PAG_KERNEL+NUM_PAG_CODE+pag, frames[pag]);
     set_ss_pag(parent_page_table, free_pag+pag, frames[pag]);
     copy_data((void *)((NUM_PAG_KERNEL + NUM_PAG_CODE + pag) * PAGE_SIZE), (void *)((free_pag + pag) * PAGE_SIZE), PAGE_SIZE);
     del_ss_pag(parent_page_table, free_pag+pag);
   }
+  for (pag = 0; pag < NUM_PAG_HEAP; ++pag) {
+
+  }
+
 
   set_cr3(get_DIR(&parent_union->task));
 
@@ -306,3 +314,109 @@ int sys_sem_destroy(int n_sem){
   return 0;
 
 }
+
+int sys_read (int fd, char *buf, int count) {
+  update_user_ticks(&current()->p_stats);
+
+  int ret = check_fd(fd, ESCRIPTURA);
+  if (ret < 0){
+    update_sys_ticks(&current()->p_stats);
+    return ret;
+  }
+  if (buf == NULL) {
+    update_sys_ticks(&current()->p_stats);
+    return -EFAULT;
+  }
+  if (count < 0) {
+    update_sys_ticks(&current()->p_stats);
+    return -EINVAL;
+  }
+  ret = sys_read_keyboard(buf, count);
+  update_sys_ticks(&current()->p_stats);
+  return ret;
+}
+
+int sys_read_keyboard(char *buf, int count) {
+  if(!list_empty(&blocked)) {
+    update_process_state_rr(current(), &blocked);
+    sched_next_rr();
+  }
+  else {
+    chars_to_read = count;
+    while (chars_to_read > 0) {
+      if (Q_COUNT(char_buffer) >= chars_to_read) {
+        char *read = queue_get_chunk(&char_buffer, count);
+        int ret = copy_to_user(read, buf, sizeof(read));
+        return !ret ? sizeof(read) : -EFAULT;
+      }
+      else if (Q_IS_FULL(char_buffer)) {
+        char *read = queue_get_chunk(&char_buffer, QUEUE_SIZE);
+        int ret = copy_to_user(read, buf, sizeof(read));
+        chars_to_read -= sizeof(read);
+        list_add(&current()->list, &blocked);
+        sched_next_rr();
+      }
+      else {
+        list_add(&current()->list, &blocked);
+        sched_next_rr();
+      }
+    }
+  }
+}
+
+void * sys_sbrk(int increment) {
+  int HEAP_START = (NUM_PAG_CODE+NUM_PAG_DATA+NUM_PAG_KERNEL)*PAGE_SIZE;
+  struct task_struct *task = current();
+  if (task->heap == NULL){
+    int frame = alloc_frame();
+    if (frame < 0) return (void *) -1;
+    set_ss_pag(get_PT(task), (unsigned int) (HEAP_START / PAGE_SIZE), (unsigned int) frame);
+    task->pages_heap = 1;
+    task->heap = (int *) HEAP_START;
+  }
+  if (increment == 0) return task->heap + task->heap_size;
+  if (increment > 0) {
+    void *ret = task->heap + task->heap_size;
+    if (task->heap_size % PAGE_SIZE + increment < PAGE_SIZE) task->heap_size += increment;
+    else {
+      task->heap_size += increment;
+      while (task->pages_heap * PAGE_SIZE < task->heap_size) {
+        int frame = alloc_frame();
+        if (frame < 0) {
+          task->heap_size -= increment;
+          while (task->pages_heap * PAGE_SIZE - task->heap_size > PAGE_SIZE) {
+            unsigned int frame_to_del = get_frame(get_PT(task), HEAP_START / PAGE_SIZE + task->pages_heap - 1);
+            free_frame(frame_to_del);
+            del_ss_pag(get_PT(task), HEAP_START / PAGE_SIZE + task->pages_heap - 1);
+            task->pages_heap--;
+          }
+          return (void *) -1;
+        }
+        set_ss_pag(get_PT(task), HEAP_START / PAGE_SIZE + task->pages_heap, (unsigned int) frame);
+        task->pages_heap++;
+      }
+    }
+  }
+  else if (task->heap_size + increment < 0) {
+    task->heap_size = 0;
+    while (task->pages_heap > 0) {
+      unsigned int frame_to_del = get_frame(get_PT(task), HEAP_START / PAGE_SIZE + task->pages_heap - 1);
+      free_frame(frame_to_del);
+      del_ss_pag(get_PT(task), HEAP_START / PAGE_SIZE + task->pages_heap - 1);
+      task->pages_heap--;
+    }
+    return task->heap;
+  }
+  else {
+    task->heap_size += increment;
+    while (task->pages_heap * PAGE_SIZE - task->heap_size > PAGE_SIZE) {
+      unsigned int frame_to_del = get_frame(get_PT(task), HEAP_START / PAGE_SIZE + task->pages_heap - 1);
+      free_frame(frame_to_del);
+      del_ss_pag(get_PT(task), HEAP_START / PAGE_SIZE + task->pages_heap - 1);
+      task->pages_heap--;
+    }
+    return task->heap + task->heap_size;
+  }
+}
+
+

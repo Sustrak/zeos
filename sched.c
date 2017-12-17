@@ -4,6 +4,8 @@
 
 #include <sched.h>
 #include <mm.h>
+#include <devices.h>
+#include "queue.h"
 
 /**
  * Container for the Task array and 2 additional pages (the first and the last one)
@@ -21,10 +23,10 @@ struct task_struct *list_head_to_task_struct(struct list_head *l)
 }
 #endif
 
-extern struct list_head blocked;
 struct list_head freequeue;
 struct list_head readyqueue;
 struct task_struct *idle_task;
+struct queue char_buffer;
 int current_quantum;
 int allocated_dirs[NR_TASKS];
 struct semaphore semaphores[NR_SEMAPHORES];
@@ -104,7 +106,7 @@ void init_task1(void)
 	union task_union *task1_union = list_entry(element, union task_union, task.list);
 
 	task1_union->task.PID = 1;
-
+  task1_union->task.heap = NULL;
 	//Setting quantum and stats
 	task1_union->task.quantum = DEFAULT_QUANTUM;
   current_quantum = DEFAULT_QUANTUM;
@@ -121,6 +123,8 @@ void init_task1(void)
 void init_sched(){
   INIT_LIST_HEAD(&freequeue);
   INIT_LIST_HEAD(&readyqueue);
+  INIT_LIST_HEAD(&blocked);
+  INIT_QUEUE(&char_buffer);
 	int i = 0;
   for (i = 0; i < NR_TASKS; ++i) {
     list_add(&(task[i].task.list), &freequeue);
@@ -158,23 +162,9 @@ void task_switch(union task_union *new) {
 }
 
 void inner_task_switch(union task_union *new) {
-  /*tss.esp0 = (DWord) new->stack[KERNEL_STACK_SIZE];
-  set_cr3(new->task.dir_pages_baseAddr);
-  void * old = current()->kernel_esp;
-  void  *next = (new->task).kernel_esp;
-  __asm__ __volatile__(
-  "movl %%ebp,%0;"
-  "movl %1, %%esp;"
-  "popl %%ebp;"
-  "ret"
-  :
-  : "g" (old), "g" (next)
-  );
-  */
-
   page_table_entry *new_DIR = get_DIR(&new->task);
-  tss.esp0 = (int)&(new->stack[KERNEL_STACK_SIZE]);
-  set_cr3(new_DIR);
+  tss.esp0 = (DWord) (int)&(new->stack[KERNEL_STACK_SIZE]);
+  if(new->task.dir_pages_baseAddr != current()->dir_pages_baseAddr) set_cr3(new_DIR);
 
   __asm__ __volatile__(
 	"movl %%ebp, %0;"
@@ -216,7 +206,7 @@ void update_process_state_rr(struct task_struct *t, struct list_head *dest) {
   if(dest == &readyqueue){
     t->state = ST_READY;
   }
-  else if(dest == &freequeue) t->state = ST_BLOCKED;
+  else if(dest == &freequeue || dest == &blocked) t->state = ST_BLOCKED;
   else {
     t->state = ST_RUN;
   }

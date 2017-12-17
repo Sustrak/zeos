@@ -29,6 +29,9 @@ struct task_struct {
   enum state_t state;
   struct stats p_stats;
   int dir_number;
+  int *heap;
+  unsigned int heap_size;
+  unsigned int pages_heap;
 };
 
 union task_union {
@@ -48,9 +51,10 @@ extern union task_union *task; /* Vector de tasques */
 extern struct task_struct *idle_task;
 extern struct list_head freequeue;
 extern struct list_head readyqueue;
-extern union task_union *idle_union;
 extern int allocated_dirs[NR_TASKS];
 extern struct semaphore semaphores[NR_SEMAPHORES];
+extern struct queue char_buffer;
+
 
 
 
