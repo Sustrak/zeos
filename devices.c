@@ -15,7 +15,7 @@ int sys_write_console(char *buffer,int size)
   return size;
 }
 
-void block_io_process(struct task_struct *t, int again) {
+/*void block_io_process(struct task_struct *t, int again) {
   if(!again){
     update_process_state_rr(t, &blocked);
     sched_next_rr();
@@ -32,5 +32,5 @@ void unblock_io_process() {
   list_del(element);
   struct task_struct *t = list_head_to_task_struct(element);
   update_process_state_rr(t, &readyqueue);
-}
+}*/
 

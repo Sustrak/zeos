@@ -42,7 +42,7 @@ set(SOURCE_FILES
         system.lds
         user.c
         user.lds
-        utils.c include/errno.h errno.c perror.c include/perror.h include/sys_codes.h include/stdlib.h stdlib.c include/zeosarg.h zeosarg.c include/zeosarg.h zeosarg.c queue.c queue.h)
+        utils.c include/errno.h errno.c perror.c include/perror.h include/sys_codes.h include/stdlib.h stdlib.c include/zeosarg.h zeosarg.c include/zeosarg.h zeosarg.c queue.c include/queue.h)
 
 include_directories(include)
 

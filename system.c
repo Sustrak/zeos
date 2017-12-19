@@ -105,6 +105,7 @@ int __attribute__((__section__(".text.main")))
   /*Initialization of the clock variable*/
   zeos_clock = 0;
   nextPID = 2; //0 -- IDLE / 1 -- init_task1
+  zeos_init_auxjp();
   enable_int();
 
   /*

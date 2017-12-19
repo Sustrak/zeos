@@ -7,7 +7,7 @@
 #include <mm.h>
 #include <system.h>
 #include <errno.h>
-#include "queue.h"
+#include <queue.h>
 
 #define LECTURA 0
 #define ESCRIPTURA 1
@@ -62,7 +62,7 @@ int sys_fork(){
 
   unsigned int frames[NUM_PAG_DATA];
   unsigned int pag, i;
-	
+
   for(pag = 0; pag < NUM_PAG_DATA; pag++){
     frames[pag] = (unsigned int) alloc_frame();
     if(frames[pag] < 0){
@@ -91,8 +91,25 @@ int sys_fork(){
     copy_data((void *)((NUM_PAG_KERNEL + NUM_PAG_CODE + pag) * PAGE_SIZE), (void *)((free_pag + pag) * PAGE_SIZE), PAGE_SIZE);
     del_ss_pag(parent_page_table, free_pag+pag);
   }
-  for (pag = 0; pag < NUM_PAG_HEAP; ++pag) {
 
+  unsigned int framesH[NUM_PAG_HEAP];
+  for(pag = 0; pag < NUM_PAG_DATA; pag++){
+    framesH[pag] = (unsigned int) alloc_frame();
+    if(framesH[pag] < 0){
+      for(i = 0; i < pag; ++i){
+        free_frame(framesH[i]);
+      }
+      list_add_tail(element, &freequeue);
+      update_sys_ticks(&current()->p_stats);
+      return -EAGAIN;
+    }
+  }
+
+  for (pag = 0; pag < NUM_PAG_HEAP; ++pag) {
+    set_ss_pag(child_page_table, NUM_PAG_KERNEL+NUM_PAG_CODE+NUM_PAG_HEAP+pag, framesH[pag]);
+    set_ss_pag(parent_page_table, free_pag+pag, framesH[pag]);
+    copy_data((void *)((NUM_PAG_KERNEL + NUM_PAG_CODE + NUM_PAG_DATA + pag) * PAGE_SIZE), (void *)((free_pag + pag) * PAGE_SIZE), PAGE_SIZE);
+    del_ss_pag(parent_page_table, free_pag+pag);
   }
 
 
@@ -134,6 +151,10 @@ void sys_exit()
       free_frame(get_frame(current_pt, PAG_LOG_INIT_DATA + pag));
       del_ss_pag(current_pt, PAG_LOG_INIT_DATA + pag);
     }
+    for (pag = 0; pag < current_task->pages_heap; ++pag) {
+      free_frame(get_frame(current_pt, PAG_LOG_INIT_DATA + NUM_PAG_DATA + pag));
+      del_ss_pag(current_pt, PAG_LOG_INIT_DATA + NUM_PAG_DATA + pag);
+    }
   }
 
   list_add_tail(&current_task->list, &freequeue);
@@ -171,7 +192,7 @@ int sys_write(int fd, char *buffer, int size)
     if (error == -1) {
 		update_sys_ticks(&current()->p_stats);
 		return error;
-	}
+	  }
     ret += sys_write_console(buff, SIZE_BUFFER);
     buffer += SIZE_BUFFER;
     size -= SIZE_BUFFER;
@@ -352,6 +373,7 @@ int sys_read_keyboard(char *buf, int count) {
       else if (Q_IS_FULL(char_buffer)) {
         char *read = queue_get_chunk(&char_buffer, QUEUE_SIZE);
         int ret = copy_to_user(read, buf, sizeof(read));
+        if(!ret) return -EFAULT;
         chars_to_read -= sizeof(read);
         list_add(&current()->list, &blocked);
         sched_next_rr();
@@ -396,6 +418,7 @@ void * sys_sbrk(int increment) {
         task->pages_heap++;
       }
     }
+    return ret;
   }
   else if (task->heap_size + increment < 0) {
     task->heap_size = 0;
