@@ -7,6 +7,6 @@
 
 extern char *error_list[];
 
-void perror(char *s);
+void perror();
 
 #endif //ZEOS_PERROR_H

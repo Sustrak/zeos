@@ -1,9 +1,9 @@
 #ifndef ZEOS_QUEUE_H
 #define ZEOS_QUEUE_H
 
-#define QUEUE_SIZE 32
+#define QUEUE_SIZE 8
 
-extern struct queue {
+struct queue {
   int read;
   int write;
   char queue[QUEUE_SIZE];
@@ -14,14 +14,10 @@ extern struct queue {
 #define Q_IS_EMPTY(q) \
   ({(q).read == -1 && (q).write == -1 ? 1 : 0;})
 
-#define Q_COUNT(q) \
-  ({((q).write - (q).read)%QUEUE_SIZE + 1;})
 
 void INIT_QUEUE(struct queue *q);
-int is_full(struct queue *q);
 int add_to_queue(char c, struct queue *q);
 char get_first(struct queue *q);
-char *queue_get_chunk(struct queue *q, int size);
-
+int queue_count(struct queue *q);
 
 #endif //ZEOS_QUEUE_H

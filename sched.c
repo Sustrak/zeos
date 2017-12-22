@@ -81,6 +81,7 @@ void init_idle (void)
 
   //Setting the PID to 0
   idle_union->task.PID = 0;
+  idle_union->task.heap = NULL;
 
   //Setting quantum and stats
   idle_union->task.quantum = DEFAULT_QUANTUM;
@@ -107,6 +108,7 @@ void init_task1(void)
 
 	task1_union->task.PID = 1;
   task1_union->task.heap = NULL;
+
 	//Setting quantum and stats
 	task1_union->task.quantum = DEFAULT_QUANTUM;
   current_quantum = DEFAULT_QUANTUM;

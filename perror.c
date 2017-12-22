@@ -1,7 +1,6 @@
 #include <perror.h>
 #include <errno.h>
 #include <libc.h>
-#include <types.h>
 
 
 char *error_list[] = {
@@ -131,13 +130,9 @@ char *error_list[] = {
         " Wrong medium type ",
 };
 
-void perror(char *s){
-  char *code = error_list[-errno];
-  if (errno >= 0) code = "Unknown error";
-  if (s != NULL) {
-    write(1, s, strlen(s));
-    write(1, ":" ,1);
-  }
+void perror(){
+  char *code = error_list[errno];
+  if (errno <= 0) code = "Unknown error";
   write(1, code, strlen(code));
   write(1, "\n" ,1);
 }

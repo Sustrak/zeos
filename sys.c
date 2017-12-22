@@ -14,14 +14,16 @@
 #define SIZE_BUFFER 32
 
 int chars_to_read;
+int offset;
 
 int sys_sem_destroy(int n_sem);
 int sys_read_keyboard(char *buf, int count);
 
 int check_fd(int fd, int permissions)
 {
-  if (fd!=1) return -9; /*EBADF*/
-  if (permissions!=ESCRIPTURA) return -EACCES; /*EACCES*/
+  if (fd!=1 && fd!=0) return -EBADF; /*EBADF*/
+  if (fd==1 && permissions!=ESCRIPTURA) return -EACCES; /*EACCES*/
+  if (fd==0 && permissions!=LECTURA) return -EACCES; /*EACCES*/
   return 0;
 }
 
@@ -60,14 +62,14 @@ int sys_fork(){
 
   page_table_entry *parent_page_table = get_PT(current());
 
-  unsigned int frames[NUM_PAG_DATA];
+  int frames[NUM_PAG_DATA];
   unsigned int pag, i;
 
   for(pag = 0; pag < NUM_PAG_DATA; pag++){
-    frames[pag] = (unsigned int) alloc_frame();
+    frames[pag] = alloc_frame();
     if(frames[pag] < 0){
       for(i = 0; i < pag; ++i){
-        free_frame(frames[i]);
+        free_frame((unsigned int) frames[i]);
       }
       list_add_tail(element, &freequeue);
       update_sys_ticks(&current()->p_stats);
@@ -83,33 +85,34 @@ int sys_fork(){
   for(pag = 0; pag < NUM_PAG_KERNEL+NUM_PAG_CODE; pag++){
     set_ss_pag(child_page_table, pag, get_frame(parent_page_table, pag));
   }
-  int NUM_PAG_HEAP = parent_union->task.pages_heap;
-  int free_pag = NUM_PAG_KERNEL+NUM_PAG_CODE+NUM_PAG_DATA+NUM_PAG_HEAP+1;
+  int free_pag = NUM_PAG_KERNEL+NUM_PAG_CODE+NUM_PAG_DATA+1;
   for(pag = 0; pag < NUM_PAG_DATA; pag++){
-    set_ss_pag(child_page_table, NUM_PAG_KERNEL+NUM_PAG_CODE+pag, frames[pag]);
-    set_ss_pag(parent_page_table, free_pag+pag, frames[pag]);
+    set_ss_pag(child_page_table, NUM_PAG_KERNEL+NUM_PAG_CODE+pag, (unsigned int) frames[pag]);
+    set_ss_pag(parent_page_table, free_pag+pag, (unsigned int) frames[pag]);
     copy_data((void *)((NUM_PAG_KERNEL + NUM_PAG_CODE + pag) * PAGE_SIZE), (void *)((free_pag + pag) * PAGE_SIZE), PAGE_SIZE);
     del_ss_pag(parent_page_table, free_pag+pag);
   }
 
-  unsigned int framesH[NUM_PAG_HEAP];
-  for(pag = 0; pag < NUM_PAG_DATA; pag++){
-    framesH[pag] = (unsigned int) alloc_frame();
+  int NUM_PAG_HEAP = parent_union->task.pages_heap;
+  int framesH[NUM_PAG_HEAP];
+  for(pag = 0; pag < NUM_PAG_HEAP; pag++){
+    framesH[pag] = alloc_frame();
     if(framesH[pag] < 0){
       for(i = 0; i < pag; ++i){
-        free_frame(framesH[i]);
+        free_frame((unsigned int) framesH[i]);
       }
       list_add_tail(element, &freequeue);
       update_sys_ticks(&current()->p_stats);
       return -EAGAIN;
     }
   }
-
+  int free_pagH = NUM_PAG_KERNEL+NUM_PAG_CODE+2*NUM_PAG_DATA+NUM_PAG_HEAP+2;
   for (pag = 0; pag < NUM_PAG_HEAP; ++pag) {
-    set_ss_pag(child_page_table, NUM_PAG_KERNEL+NUM_PAG_CODE+NUM_PAG_HEAP+pag, framesH[pag]);
-    set_ss_pag(parent_page_table, free_pag+pag, framesH[pag]);
-    copy_data((void *)((NUM_PAG_KERNEL + NUM_PAG_CODE + NUM_PAG_DATA + pag) * PAGE_SIZE), (void *)((free_pag + pag) * PAGE_SIZE), PAGE_SIZE);
-    del_ss_pag(parent_page_table, free_pag+pag);
+    set_ss_pag(child_page_table, NUM_PAG_KERNEL+NUM_PAG_CODE+2*NUM_PAG_DATA+NUM_PAG_HEAP+pag,
+               (unsigned int) framesH[pag]);
+    set_ss_pag(parent_page_table, free_pagH+pag, (unsigned int) framesH[pag]);
+    copy_data((void *)((NUM_PAG_KERNEL + NUM_PAG_CODE + 2*NUM_PAG_DATA + pag) * PAGE_SIZE), (void *)((free_pagH + pag) * PAGE_SIZE), PAGE_SIZE);
+    del_ss_pag(parent_page_table, free_pagH+pag);
   }
 
 
@@ -152,8 +155,8 @@ void sys_exit()
       del_ss_pag(current_pt, PAG_LOG_INIT_DATA + pag);
     }
     for (pag = 0; pag < current_task->pages_heap; ++pag) {
-      free_frame(get_frame(current_pt, PAG_LOG_INIT_DATA + NUM_PAG_DATA + pag));
-      del_ss_pag(current_pt, PAG_LOG_INIT_DATA + NUM_PAG_DATA + pag);
+      free_frame(get_frame(current_pt, PAG_LOG_INIT_DATA + 2*NUM_PAG_DATA + pag));
+      del_ss_pag(current_pt, PAG_LOG_INIT_DATA + 2*NUM_PAG_DATA + pag);
     }
   }
 
@@ -339,7 +342,7 @@ int sys_sem_destroy(int n_sem){
 int sys_read (int fd, char *buf, int count) {
   update_user_ticks(&current()->p_stats);
 
-  int ret = check_fd(fd, ESCRIPTURA);
+  int ret = check_fd(fd, LECTURA);
   if (ret < 0){
     update_sys_ticks(&current()->p_stats);
     return ret;
@@ -352,6 +355,10 @@ int sys_read (int fd, char *buf, int count) {
     update_sys_ticks(&current()->p_stats);
     return -EINVAL;
   }
+  if(!access_ok(VERIFY_READ, buf, (unsigned long) count)) {
+    update_sys_ticks(&current()->p_stats);
+    return -EFAULT;
+  }
   ret = sys_read_keyboard(buf, count);
   update_sys_ticks(&current()->p_stats);
   return ret;
@@ -362,32 +369,39 @@ int sys_read_keyboard(char *buf, int count) {
     update_process_state_rr(current(), &blocked);
     sched_next_rr();
   }
-  else {
-    chars_to_read = count;
-    while (chars_to_read > 0) {
-      if (Q_COUNT(char_buffer) >= chars_to_read) {
-        char *read = queue_get_chunk(&char_buffer, count);
-        int ret = copy_to_user(read, buf, sizeof(read));
-        return !ret ? sizeof(read) : -EFAULT;
+
+  chars_to_read = count;
+  offset = 0;
+  while (chars_to_read > 0) {
+    if (queue_count(&char_buffer) >= chars_to_read) {
+      char aux[chars_to_read];
+      int i;
+      for (i = 0; i < chars_to_read; ++i) {
+        aux[i] = get_first(&char_buffer);
       }
-      else if (Q_IS_FULL(char_buffer)) {
-        char *read = queue_get_chunk(&char_buffer, QUEUE_SIZE);
-        int ret = copy_to_user(read, buf, sizeof(read));
-        if(!ret) return -EFAULT;
-        chars_to_read -= sizeof(read);
-        list_add(&current()->list, &blocked);
-        sched_next_rr();
+      int ret = copy_to_user(aux, &buf[offset*QUEUE_SIZE], sizeof(aux));
+      return !ret ? count : -EFAULT;
+    }
+    else if (Q_IS_FULL(char_buffer)) {
+      while (queue_count(&char_buffer)) {
+        get_first(&char_buffer);
       }
-      else {
-        list_add(&current()->list, &blocked);
-        sched_next_rr();
-      }
+      int ret = copy_to_user(char_buffer.queue, buf, QUEUE_SIZE);
+      if(ret < 0) return -EFAULT;
+      chars_to_read -= QUEUE_SIZE;
+      offset++;
+      list_add(&current()->list, &blocked);
+      sched_next_rr();
+    }
+    else {
+      list_add(&current()->list, &blocked);
+      sched_next_rr();
     }
   }
 }
 
 void * sys_sbrk(int increment) {
-  int HEAP_START = (NUM_PAG_CODE+NUM_PAG_DATA+NUM_PAG_KERNEL)*PAGE_SIZE;
+  int HEAP_START = (NUM_PAG_KERNEL+NUM_PAG_CODE+2*NUM_PAG_DATA+1)*PAGE_SIZE;
   struct task_struct *task = current();
   if (task->heap == NULL){
     int frame = alloc_frame();

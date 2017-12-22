@@ -6,14 +6,15 @@
 #include <segment.h>
 #include <hardware.h>
 #include <io.h>
+#include <devices.h>
 
 #include <zeos_interrupt.h>
 #include <system.h>
 #include "queue.h"
-#include "sys.c"
 
 Gate idt[IDT_ENTRIES];
 Register    idtR;
+extern int chars_to_read;
 
 void keyboard_handler(void);
 void clock_handler(void);
@@ -104,12 +105,12 @@ void keyboard_interrupt()
   if(!(c & 0x80)) {
     char out = char_map[c];
 
-    int ret = add_to_queue(out, &char_buffer);
-    if ((!ret || Q_COUNT(char_buffer) >= chars_to_read) && !list_empty(&blocked)) {
+    add_to_queue(out, &char_buffer);
+    if ((Q_IS_FULL(char_buffer) || queue_count(&char_buffer) >= chars_to_read) && !list_empty(&blocked)) {
       struct list_head *element = list_first(&blocked);
       list_del(element);
-      update_process_state_rr((struct task_struct *) element, &readyqueue);
-      sched_next_rr();
+      struct task_struct *task = list_head_to_task_struct(element);
+      update_process_state_rr(task, &readyqueue);
     }
 
     if(out == '\0'){
